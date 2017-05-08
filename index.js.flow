@@ -1,0 +1,135 @@
+// @flow
+const ansiEscapes = require('ansi-escapes');
+const cliCursor = require('cli-cursor');
+const cursorPos = require('get-cursor-position');
+const tty = require('tty');
+const stream = require('stream');
+const wrapAnsi = require('wrap-ansi');
+
+/**
+ * VirtualLog
+ * @class
+ */
+class VirtualLog {
+    /**
+     * Output stream
+     * @type {tty.WriteStream|stream.Writable|stream.Duplex}
+     */
+    stream: tty.WriteStream | stream.Writable | stream.Duplex;
+
+    /**
+     * Output buffer
+     * @type {Array.string}
+     */
+    lines: Array<any> = [];
+
+    /**
+     * Options
+     * @type {Object}
+     */
+    options: Object = {};
+
+    constructor(stream: tty.WriteStream | stream.Writable | stream.Duplex, options: Object = {}) {
+        this.stream = stream;
+        this.options = Object.assign({}, {
+            minLines: 1,
+            wordWrap: true,
+            hardWrap: false,
+            columns: process.stdout.columns || 80,
+            clearEnd: false
+        }, options);
+
+        if (!this.options.lines) {
+            this.options.lines = this.availableLines;
+        }
+
+        process.stdout.on('resize', () => {
+            this.options.lines = this.availableLines;
+        });
+    }
+
+    /**
+     * Get available lines in TTY or return default value
+     * @return {number} Number of available rows
+     */
+    get availableLines(): number {
+        let availableLines = 10;
+
+        if (this.stream instanceof tty.WriteStream) {
+            let height = this.stream.rows;
+            availableLines = height - cursorPos.sync().row;
+
+            if (availableLines < (this.options.minLines || 1)) {
+                availableLines = this.options.minLines || 1;
+            }
+        }
+
+        return availableLines;
+    }
+
+    /**
+     * Log lines from a stream
+     * @param {stream.Readable|stream.Duplex} stream Input stream
+     * @return {VirtualLog}
+     */
+    pipe(stream: stream.Readable | stream.Duplex): this {
+        stream.on('data', chunk => {
+            this.log(chunk);
+        });
+
+        stream.on('end', () => {
+            this.done();
+        });
+
+        return this;
+    }
+
+    /**
+     * Log line
+     * @param {string} str Input string
+     * @return {VirtualLog}
+     */
+    log(str: string): this {
+        cliCursor.hide();
+
+        if (this.lines.length > 0) {
+            this.stream.write(ansiEscapes.eraseLines(this.lines.length));
+        }
+
+        let out: string = wrapAnsi(str, this.options.columns, {wordWrap: this.options.wordWrap, hard: this.options.hardWrap});
+
+        this.lines.push(out.split('\n').slice(-this.options.lines));
+        this.lines = this.lines.slice(-this.options.lines);
+        this.stream.write(this.lines.join('\n'));
+
+        return this;
+    }
+
+    /**
+     * Clear logged lines
+     * @return {VirtualLog}
+     */
+    clear(): this {
+        this.stream.write(ansiEscapes.eraseLines(this.lines.length));
+        this.lines = [];
+
+        return this;
+    }
+
+    /**
+     * Clear buffer and show cursor
+     * @return {void}
+     */
+    done(): void {
+        if (this.options.clearEnd === true) {
+            this.clear();
+        } else {
+            this.lines = [];
+            this.stream.write('\n');
+        }
+
+        cliCursor.show();
+    }
+}
+
+module.exports = VirtualLog;
