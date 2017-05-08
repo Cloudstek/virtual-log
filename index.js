@@ -1,5 +1,9 @@
 'use strict';
 
+var _toConsumableArray2 = require('babel-runtime/helpers/toConsumableArray');
+
+var _toConsumableArray3 = _interopRequireDefault(_toConsumableArray2);
+
 var _assign = require('babel-runtime/core-js/object/assign');
 
 var _assign2 = _interopRequireDefault(_assign);
@@ -35,7 +39,7 @@ var VirtualLog = function () {
             minLines: 1,
             wordWrap: true,
             hardWrap: false,
-            columns: process.stdout.columns || 80,
+            columns: this.stream.columns || 80,
             clearEnd: false
         }, options);
 
@@ -43,7 +47,8 @@ var VirtualLog = function () {
             this.options.lines = this.availableLines;
         }
 
-        process.stdout.on('resize', function () {
+        this.stream.on('resize', function () {
+            _this.options.columns = _this.stream.columns || 80;
             _this.options.lines = _this.availableLines;
         });
     }
@@ -54,11 +59,10 @@ var VirtualLog = function () {
             var _this2 = this;
 
             stream.on('data', function (chunk) {
-                _this2.log(chunk);
-            });
-
-            stream.on('end', function () {
-                _this2.done();
+                var str = chunk.toString('utf8').trim();
+                if (str.length > 0) {
+                    _this2.log(str);
+                }
             });
 
             return this;
@@ -66,6 +70,8 @@ var VirtualLog = function () {
     }, {
         key: 'log',
         value: function log(str) {
+            var _lines;
+
             cliCursor.hide();
 
             if (this.lines.length > 0) {
@@ -74,7 +80,7 @@ var VirtualLog = function () {
 
             var out = wrapAnsi(str, this.options.columns, { wordWrap: this.options.wordWrap, hard: this.options.hardWrap });
 
-            this.lines.push(out.split('\n').slice(-this.options.lines));
+            (_lines = this.lines).push.apply(_lines, (0, _toConsumableArray3.default)(out.split('\n').slice(-this.options.lines)));
             this.lines = this.lines.slice(-this.options.lines);
             this.stream.write(this.lines.join('\n'));
 
@@ -108,10 +114,10 @@ var VirtualLog = function () {
             if (this.stream instanceof tty.WriteStream) {
                 var height = this.stream.rows;
                 availableLines = height - cursorPos.sync().row;
+            }
 
-                if (availableLines < (this.options.minLines || 1)) {
-                    availableLines = this.options.minLines || 1;
-                }
+            if (availableLines < (this.options.minLines || 1)) {
+                availableLines = this.options.minLines || 1;
             }
 
             return availableLines;

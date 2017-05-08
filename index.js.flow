@@ -35,7 +35,7 @@ class VirtualLog {
             minLines: 1,
             wordWrap: true,
             hardWrap: false,
-            columns: process.stdout.columns || 80,
+            columns: this.stream.columns || 80,
             clearEnd: false
         }, options);
 
@@ -43,7 +43,8 @@ class VirtualLog {
             this.options.lines = this.availableLines;
         }
 
-        process.stdout.on('resize', () => {
+        this.stream.on('resize', () => {
+            this.options.columns = this.stream.columns || 80;
             this.options.lines = this.availableLines;
         });
     }
@@ -58,10 +59,10 @@ class VirtualLog {
         if (this.stream instanceof tty.WriteStream) {
             let height = this.stream.rows;
             availableLines = height - cursorPos.sync().row;
+        }
 
-            if (availableLines < (this.options.minLines || 1)) {
-                availableLines = this.options.minLines || 1;
-            }
+        if (availableLines < (this.options.minLines || 1)) {
+            availableLines = this.options.minLines || 1;
         }
 
         return availableLines;
@@ -73,12 +74,11 @@ class VirtualLog {
      * @return {VirtualLog}
      */
     pipe(stream: stream.Readable | stream.Duplex): this {
-        stream.on('data', chunk => {
-            this.log(chunk);
-        });
-
-        stream.on('end', () => {
-            this.done();
+        stream.on('data', (chunk: Buffer) => {
+            let str = chunk.toString('utf8').trim();
+            if (str.length > 0) {
+                this.log(str);
+            }
         });
 
         return this;
@@ -98,7 +98,7 @@ class VirtualLog {
 
         let out: string = wrapAnsi(str, this.options.columns, {wordWrap: this.options.wordWrap, hard: this.options.hardWrap});
 
-        this.lines.push(out.split('\n').slice(-this.options.lines));
+        this.lines.push(...out.split('\n').slice(-this.options.lines));
         this.lines = this.lines.slice(-this.options.lines);
         this.stream.write(this.lines.join('\n'));
 
